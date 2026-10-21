@@ -389,6 +389,8 @@ do
 							NetworkOwnerInKick = true,
 							DeleteShurInBlobK = true,
 							AntiGrab = false,
+							AntiGrabV2HardLock = false,
+							AntiGrabV2Enhanced = false,
 							GucciAntiGrab = false,
 							AntiBurn = false,
 							AntiExplosion = false,
@@ -4316,7 +4318,7 @@ end
 							return
 						end
 
-						if mainIsHeld.Value and mainFeatureFlags.AntiGrab and not mainRuntimeData.States["Anti Grab"] then
+						if mainIsHeld.Value and (mainFeatureFlags.AntiGrab or mainFeatureFlags.AntiGrabV2HardLock or mainFeatureFlags.AntiGrabV2Enhanced) and not mainRuntimeData.States["Anti Grab"] then
 							mainRemotes.Struggle:FireServer()
 							local antiGrabValue23, antiGrabValue24, antiGrabValue25 = mainActions.Char()
 							local antiGrabTorso = antiGrabValue23 and antiGrabValue23:FindFirstChild("Torso")
@@ -4328,10 +4330,11 @@ end
 							antiGrabValue25.AutoRotate = false
 							mainActions.ResetVelocity(antiGrabValue24 or antiGrabTorso)
 							local antiGrabPosition = antiGrabTorso.Position
+							local antiGrabHardLock = mainFeatureFlags.AntiGrabV2HardLock
 							local antiGrabLookVector = antiGrabTorso.CFrame.LookVector
 							local antiGrabUnit = Vector3.new(antiGrabLookVector.X, 0, antiGrabLookVector.Z).Unit
 							mainRuntimeData.States["Anti Grab"] = true
-							local antiGrabFlag12 = mainFeatureSettings.AGType == "Escape Anything" or mainFeatureSettings.AGType == "Escapes Anything, but buggy"
+							local antiGrabFlag12 = mainFeatureFlags.AntiGrabV2Enhanced or mainFeatureSettings.AGType == "Anti Grab V2" or mainFeatureSettings.AGType == "Escape Anything" or mainFeatureSettings.AGType == "Escapes Anything, but buggy"
 							local antiGrabSit = mainFeatureSettings.AGType == "Anti Kill" or mainFeatureSettings.AGType == "Anti-Kill"
 							local antiGrabFlag13 = mainFeatureSettings.AGType == "No Ragdoll"
 
@@ -4375,10 +4378,15 @@ end
 								local antiGrabMoveDirection = antiGrabValue25.MoveDirection
 								local antiGrabWalkSpeed
 
-								if mainFeatureFlags.WalkSpeed and mainFeatureSettings.WalkSpeed > 16 then
-									antiGrabWalkSpeed = mainFeatureSettings.WalkSpeed
+								if antiGrabHardLock then
+									antiGrabMoveDirection = Vector3.zero
+									antiGrabWalkSpeed = 0
 								else
-									antiGrabWalkSpeed = 16
+									if mainFeatureFlags.WalkSpeed and mainFeatureSettings.WalkSpeed > 16 then
+										antiGrabWalkSpeed = mainFeatureSettings.WalkSpeed
+									else
+										antiGrabWalkSpeed = 16
+									end
 								end
 
 								if antiGrabMoveDirection.Magnitude > 0 then
@@ -4424,7 +4432,7 @@ end
 									antiGrabValue24.Scream.Playing = false
 								end
 
-								if not mainIsHeld.Value or not mainFeatureFlags.AntiGrab then
+								if not mainIsHeld.Value or not (mainFeatureFlags.AntiGrab or mainFeatureFlags.AntiGrabV2HardLock or mainFeatureFlags.AntiGrabV2Enhanced) then
 									mainRuntimeData.States["Anti Grab"] = false
 
 									if antiGrabSit then
@@ -20534,11 +20542,31 @@ Escape Timer: %*]]
 
 		mainConfigGroup:AddDivider("Anti Grab Settings")
 
+		mainConfigGroup:AddToggle("AntiGrabV2HardLock", {
+			Text = "Anti Grab V2 — Hard Lock",
+			Default = false,
+			Callback = function(enabled)
+				mainFeatureFlags.AntiGrabV2HardLock = enabled
+				if enabled then mainFeatureFlags.AntiGrabV2Enhanced = false end
+				mainActions.AntiGrab()
+			end,
+		})
+
+		mainConfigGroup:AddToggle("AntiGrabV2Enhanced", {
+			Text = "Anti Grab V2 — Enhanced Protection",
+			Default = false,
+			Callback = function(enabled)
+				mainFeatureFlags.AntiGrabV2Enhanced = enabled
+				if enabled then mainFeatureFlags.AntiGrabV2HardLock = false end
+				mainActions.AntiGrab()
+			end,
+		})
+
 		mainConfigGroup:AddDropdown("AGTDropdown", {
-			Values = { "Normal", "Anti Kill", "No Ragdoll", "Escape Anything" },
+			Values = { "Normal", "Anti Grab V2", "Anti Kill", "No Ragdoll", "Escape Anything" },
 			Default = 1,
 			Multi = false,
-			Text = "Selected Method",
+			Text = "Anti Grab Method",
 			Callback = function(antiGrabType)
 				mainFeatureSettings.AGType = antiGrabType
 			end,
