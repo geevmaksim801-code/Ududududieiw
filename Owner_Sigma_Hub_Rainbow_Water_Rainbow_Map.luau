@@ -4330,9 +4330,18 @@ end
 							local antiGrabPosition = antiGrabTorso.Position
 							local antiGrabHardLock = false
 							local antiGrabLookVector = antiGrabTorso.CFrame.LookVector
-							local antiGrabUnit = Vector3.new(antiGrabLookVector.X, 0, antiGrabLookVector.Z).Unit
+							local antiGrabUnit = Vector3.new(antiGrabLookVector.X, 0, antiGrabLookVector.Z)
+							if antiGrabUnit.Magnitude < 0.001 then
+								antiGrabUnit = Vector3.new(0, 0, -1)
+							else
+								antiGrabUnit = antiGrabUnit.Unit
+							end
 							mainRuntimeData.States["Anti Grab"] = true
-							local antiGrabV2 = mainFeatureSettings.AGType == "Anti Grab V2"
+							local antiGrabMethod = mainFeatureSettings.AGType
+							local antiGrabV2 = antiGrabMethod == "Anti Grab V2"
+							-- V2 combines rapid struggle retries and enhanced recovery in one method.
+							local antiGrabRapid = antiGrabV2
+							local antiGrabRecoveryPlus = antiGrabV2
 							local antiGrabFlag12 = antiGrabV2 or mainFeatureSettings.AGType == "Escape Anything" or mainFeatureSettings.AGType == "Escapes Anything, but buggy"
 							local antiGrabSit = mainFeatureSettings.AGType == "Anti Kill" or mainFeatureSettings.AGType == "Anti-Kill"
 							local antiGrabFlag13 = mainFeatureSettings.AGType == "No Ragdoll"
@@ -4351,33 +4360,29 @@ end
 								local antiGrabNow4 = tick()
 
 								if antiGrabNow4 >= antiGrabNumber36 then
-									mainRemotes.Struggle:FireServer()
-									antiGrabNumber36 = antiGrabNow4 + 0.033333333333333333
+									pcall(function() mainRemotes.Struggle:FireServer() end)
+									antiGrabNumber36 = antiGrabNow4 + (antiGrabRapid and 0.05 or antiGrabV2 and 0.075 or 0.033333333333333333)
 								end
 
-								if antiGrabValue24 and not antiGrabFlag12 and not antiGrabFlag13 and antiGrabNow4 >= antiGrabNumber37 then
+								if antiGrabValue24 and antiGrabValue24.Parent and not antiGrabFlag12 and not antiGrabFlag13 and antiGrabNow4 >= antiGrabNumber37 then
 									local antiGrabRagdollRemote = mainRemotes.RagdollRemote
-									local antiGrabFireServer = antiGrabRagdollRemote.FireServer
-									local antiGrabNumber38
-
-									if antiGrabSit then
-										antiGrabNumber38 = 0.11
-									else
-										antiGrabNumber38 = 0
+									local antiGrabNumber38 = antiGrabSit and 0.11 or 0
+									if antiGrabRagdollRemote then
+										pcall(function()
+											antiGrabRagdollRemote:FireServer(antiGrabValue24, antiGrabNumber38)
+										end)
+									end
+									antiGrabNumber37 = antiGrabNow4 + 0.05
 									end
 
-									antiGrabFireServer(antiGrabRagdollRemote, antiGrabValue24, antiGrabNumber38)
-									antiGrabNumber37 = antiGrabNow4 + 0.033333333333333333
-								end
-
-								if antiGrabFlag12 and tick() - antiGrabNow3 > (antiGrabV2 and 0.75 or 2) then
+									if antiGrabFlag12 and tick() - antiGrabNow3 > (antiGrabRecoveryPlus and 0.4 or antiGrabV2 and 0.75 or 2) then
 									task.spawn(mainActions.ExtraEscape)
 									antiGrabNow3 = tick()
 								end
 
 								-- Anti Grab V2: periodically retry escape and safely recover local ragdoll state.
 								if antiGrabV2 and antiGrabNow4 >= antiGrabV2RecoveryAt then
-									antiGrabV2RecoveryAt = antiGrabNow4 + 0.25
+									antiGrabV2RecoveryAt = antiGrabNow4 + (antiGrabRecoveryPlus and 0.15 or 0.25)
 									local antiGrabRagdolled = antiGrabValue25:FindFirstChild("Ragdolled")
 									if antiGrabRagdolled and antiGrabRagdolled:IsA("BoolValue") and antiGrabRagdolled.Value then
 										pcall(function()
@@ -4415,8 +4420,12 @@ end
 
 								local antiGrabVector = Vector3.new(antiGrabMoveDirection.X, 0, antiGrabMoveDirection.Z)
 
-								if antiGrabVector.Magnitude > 0 then
-									antiGrabUnit = antiGrabUnit:Lerp(antiGrabVector.Unit, math.min(antiGrabDeltaTime * 12, 1)).Unit
+								if antiGrabVector.Magnitude > 0.001 then
+									local antiGrabTargetUnit = antiGrabVector.Unit
+									local antiGrabBlendedUnit = antiGrabUnit:Lerp(antiGrabTargetUnit, math.min(antiGrabDeltaTime * 12, 1))
+									if antiGrabBlendedUnit.Magnitude > 0.001 then
+										antiGrabUnit = antiGrabBlendedUnit.Unit
+									end
 								end
 
 								mainActions.ResetVelocity(antiGrabValue24 or antiGrabTorso)
@@ -4439,7 +4448,7 @@ end
 								end
 
 								for _antiGrabUnused1, antiGrabValue26 in ipairs(antiGrabValue25:GetPlayingAnimationTracks()) do
-									if antiGrabValue26.Animation.AnimationId == "rbxassetid://7047322890" then
+									if antiGrabValue26.Animation and antiGrabValue26.Animation.AnimationId == "rbxassetid://7047322890" then
 										antiGrabValue26:Stop()
 									end
 								end
@@ -4448,7 +4457,7 @@ end
 									antiGrabValue24.Scream.Playing = false
 								end
 
-								if not mainIsHeld.Value or not mainFeatureFlags.AntiGrab then
+								if not antiGrabValue25.Parent or not antiGrabTorso.Parent or not mainIsHeld.Value or not mainFeatureFlags.AntiGrab then
 									mainRuntimeData.States["Anti Grab"] = false
 
 									if antiGrabSit then
