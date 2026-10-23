@@ -22938,7 +22938,7 @@ Escape Timer: %*]]
 
 		local mainConfigGroup = mainEsp:AddTab("Config", "settings")
 
-		mainConfigGroup:AddDropdown("EspConfDD", {
+		mainUiOptions.EspConfDD = mainConfigGroup:AddDropdown("EspConfDD", {
 			Values = { "Player ESP", "Server ESP", "Sticky ESP", "Blackhole ESP" },
 			Default = 1,
 			Multi = false,
