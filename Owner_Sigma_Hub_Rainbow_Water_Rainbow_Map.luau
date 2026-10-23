@@ -399,6 +399,7 @@ do
 							AutoAntiLag = true,
 							AntiInputLag = false,
 							AntiSticky = false,
+							AntiStickyExploits = false,
 							AntiShurikenLag = false,
 							AntiBanana = false,
 							AntiSnowball = false,
@@ -516,6 +517,10 @@ do
 							NKDelayMode = "Normal",
 							KickServerMethod = "Circle + Lag",
 							KickFlags = 0,
+							AutoResetDelay = 0.5,
+							AutoResetFlagLimit = 4,
+							AutoResetLastAt = 0,
+							PCLDStyle = "Neon",
 							AuraDistance = 25,
 							ToyAuraDistance = 31,
 							CustomLine = "Chain 2",
@@ -6931,7 +6936,13 @@ end
 							updatePCLDESPValue23.Box.Transparency = updatePCLDESPServer.OutlineTransparency
 							updatePCLDESPValue23.Box.SurfaceTransparency = updatePCLDESPServer.FillTransparency
 							updatePCLDESPValue23.Box.LineThickness = updatePCLDESPServer.OutlineThickness
-							updatePCLDESPValue23.Box.Visible = mainFeatureFlags.PCLDESP and not updatePCLDESPValue24
+							local pcldStyle = mainFeatureSettings.PCLDStyle or "Neon"
+							local pcldMaterials = { Neon = Enum.Material.Neon, Glass = Enum.Material.Glass, Brick = Enum.Material.Brick, Holographic = Enum.Material.ForceField, Crystal = Enum.Material.Ice }
+							updatePCLDESPValue23.Clone.Material = pcldMaterials[pcldStyle] or Enum.Material.Neon
+							updatePCLDESPValue23.Clone.Color = updatePCLDESPServer.FillColor
+							local pcldVisible = mainFeatureFlags.PCLDESP and not updatePCLDESPValue24
+							updatePCLDESPValue23.Clone.Transparency = pcldVisible and ((pcldStyle == "Glass" and 0.45) or (pcldStyle == "Brick" and 0.2) or (pcldStyle == "Crystal" and 0.3) or (pcldStyle == "Holographic" and 0.35) or 0.18) or 1
+							updatePCLDESPValue23.Box.Visible = pcldVisible
 							local updatePCLDESPPlayer = mainRuntimeData.PCLDTracker.PartStates[updatePCLDESPParameter]
 							updatePCLDESPPlayer = updatePCLDESPPlayer and updatePCLDESPPlayer.Player
 							local updatePCLDESPValue = updatePCLDESPPlayer and select(2, mainActions.Char(updatePCLDESPPlayer))
@@ -7216,7 +7227,12 @@ end
 							end
 
 							mainActions.CreateStickyESP = function(createStickyESPParameter)
-								if mainState16.Stickies[createStickyESPParameter] then
+								local existingStickyState = mainState16.Stickies[createStickyESPParameter]
+								if existingStickyState then
+									for _, existingStickyPart in ipairs(createStickyESPParameter:QueryDescendants("BasePart")) do
+										mainFunction25(existingStickyState, existingStickyPart)
+									end
+									mainActions.UpdateStickyESP(createStickyESPParameter)
 									return
 								end
 								local createStickyESPStickyPart = createStickyESPParameter:WaitForChild("StickyPart", 0.15)
@@ -7505,6 +7521,14 @@ end
 									mainFeatureFlags.StickyESP = true
 									mainActions.UpdateESP("Sticky")
 									mainActions.RefreshESP("Sticky")
+									task.spawn(function()
+										while not mainUnloaded and mainFeatureFlags.StickyESP and espAnimTokens.Sticky == currentToken do
+											task.wait(0.75)
+											if mainFeatureFlags.StickyESP and espAnimTokens.Sticky == currentToken then
+												pcall(function() mainActions.RefreshESP("Sticky") end)
+											end
+										end
+									end)
 								elseif category == "Blackhole" then
 									mainFeatureFlags.BlackholeESP = true
 									mainActions.UpdateESP("Blackhole")
@@ -17183,10 +17207,15 @@ Escape Timer: %*]]
 					end)
 
 					local mainNow3 = tick()
+					local bananaPingSeconds = 0
+					pcall(function()
+						bananaPingSeconds = math.max(0, mainLocalPlayer:GetNetworkPing())
+					end)
+					local bananaRecoveryWindow = math.clamp(0.75 + bananaPingSeconds * 2, 0.75, 2.5)
 
 					while true do
-						task.wait()
-						if not (not mainRightLeg.Parent or mainValue23.Health == 0 or tick() - mainNow3 > 0.75) then
+						task.wait(0.03)
+						if not (not mainRightLeg.Parent or mainValue23.Health == 0 or tick() - mainNow3 > bananaRecoveryWindow) then
 							continue
 						end
 						break
@@ -17224,17 +17253,19 @@ Escape Timer: %*]]
 						end
 
 						if mainFeatureFlags.AutoReset then
-							if mainFeatureSettings.KickFlags >= 4 and mainFeatureFlags.AutoLeave then
+							local autoResetLimit = math.max(1, tonumber(mainFeatureSettings.AutoResetFlagLimit) or 4)
+							local autoResetNow = os.clock()
+							local autoResetDelay = math.max(0, tonumber(mainFeatureSettings.AutoResetDelay) or 0.5)
+							if mainFeatureSettings.KickFlags >= autoResetLimit and mainFeatureFlags.AutoLeave then
 								return mainLocalPlayer:Kick("Spectra (Auto Reset)\nAvoided Kick")
 							end
-							local mainValue22, mainValue23, mainValue24 = mainActions.Char()
-
-							if mainValue24 then
-								mainValue24:ChangeState(Enum.HumanoidStateType.Running)
-								mainValue24:ChangeState(Enum.HumanoidStateType.Dead)
-
-								if mainFeatureSettings.KickFlags == 1 then
-									mainNotify("Reset due to kick flag", "Auto Reset")
+							if mainFeatureSettings.KickFlags >= autoResetLimit and autoResetNow - (mainFeatureSettings.AutoResetLastAt or 0) >= autoResetDelay then
+								local mainValue22, mainValue23, mainValue24 = mainActions.Char()
+								if mainValue24 and mainValue24.Health > 0 then
+									mainFeatureSettings.AutoResetLastAt = autoResetNow
+									mainValue24:ChangeState(Enum.HumanoidStateType.Running)
+									mainValue24:ChangeState(Enum.HumanoidStateType.Dead)
+									mainNotify("Reset due to kick flag (" .. tostring(mainFeatureSettings.KickFlags) .. ")", "Auto Reset")
 								end
 							end
 						end
@@ -20150,12 +20181,65 @@ Escape Timer: %*]]
 			end,
 		})
 
+		local autoResetSettingsBox = mainAntisGroup:AddDependencyBox()
+		autoResetSettingsBox:SetupDependencies({ { mainUiOptions.AutoReset, true } })
+		autoResetSettingsBox:AddSlider("AutoResetDelay", {
+			Text = "Reset Timer (seconds)",
+			Default = mainFeatureSettings.AutoResetDelay,
+			Min = 0,
+			Max = 10,
+			Rounding = 2,
+			Compact = true,
+			Callback = function(value)
+				mainFeatureSettings.AutoResetDelay = math.clamp(tonumber(value) or 0.5, 0, 10)
+			end,
+		})
+		autoResetSettingsBox:AddSlider("AutoResetFlagLimit", {
+			Text = "Flag Limit",
+			Default = mainFeatureSettings.AutoResetFlagLimit,
+			Min = 1,
+			Max = 10,
+			Rounding = 0,
+			Compact = true,
+			Callback = function(value)
+				mainFeatureSettings.AutoResetFlagLimit = math.clamp(math.floor(tonumber(value) or 4), 1, 10)
+			end,
+		})
+
 		mainAntisGroup:AddToggle("AntiBurn", {
 			Text = "Anti Burn",
 			Default = false,
 			Callback = function(antiBurn)
 				mainFeatureFlags.AntiBurn = antiBurn
 				mainActions.SetAntiBurn(antiBurn)
+			end,
+		})
+
+		mainAntisGroup:AddToggle("AntiStickyExploits", {
+			Text = "Anti Sticky-Exploits",
+			Default = false,
+			Callback = function(enabled)
+				mainFeatureFlags.AntiStickyExploits = enabled
+				if not enabled then return end
+				task.spawn(function()
+					while mainFeatureFlags.AntiStickyExploits and not mainUnloaded do
+						local character = mainActions.Char()
+						if character then
+							for _, part in ipairs(workspace:QueryDescendants("BasePart#StickyPart")) do
+								if part.Parent then
+									local weld = part:FindFirstChild("StickyWeld")
+									local target = weld and weld.Part1
+									if target and target:IsDescendantOf(character) then
+										for _, child in ipairs(part:GetChildren()) do
+											if child:IsA("TouchInterest") then child:Destroy() end
+										end
+									end
+								end
+							end
+						end
+						task.wait(0.1)
+					end
+				end)
 			end,
 		})
 
@@ -23005,6 +23089,23 @@ Escape Timer: %*]]
 
 		local mainValue22 = mainConfigGroup:AddDependencyBox()
 		mainValue22:SetupDependencies({ { mainUiOptions.EspConfDD, "Server ESP" } })
+
+		mainValue22:AddDropdown("PCLDVisualStyle", {
+			Text = "PCLD Appearance",
+			Values = { "Neon", "Glass", "Brick", "Holographic", "Crystal" },
+			Default = "Neon",
+			Multi = false,
+			Callback = function(style)
+				mainFeatureSettings.PCLDStyle = style
+				if mainRuntimeData.ESPConfig and mainRuntimeData.ESPConfig.Server and mainRuntimeData.ESPConfig.Server.Objects then
+					for pcldPart in pairs(mainRuntimeData.PCLDParts) do
+						if pcldPart and pcldPart.Parent and mainActions.UpdatePCLDESP then
+							pcall(mainActions.UpdatePCLDESP, pcldPart)
+						end
+					end
+				end
+			end,
+		})
 
 		mainValue22:AddToggle("SmoothPCLD", {
 			Text = "Smooth Movement",
